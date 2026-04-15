@@ -1,0 +1,23 @@
+visa_type: "Shengen Visitor Visa"
+documents:
+  - name: "passport"
+    required: true
+    description: "Valid passport with at least 6 months remaining"
+  - name: "bank_statement"
+    required: true
+    description: "Bank statements from the last 3 months"
+  - name: "proof_of_address"
+    required: true
+    description: "Utility bill or council tax bill or bank statement"
+  - name: "employment_letter"
+    required: false
+    description: "Letter from employer confirming employment"
+  - name: "cover_letter"
+    required: true
+    description: "Letter confirming intent to travel with basic plans"
+  - name: "travel_insurance"
+    required: true
+    description: "Confirmation of travel insurance"
+  - name: "travel_tickets"
+    required: true
+    description: "Confirmation of travel to and from the destination "
