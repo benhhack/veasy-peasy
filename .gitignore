@@ -11,6 +11,8 @@ build/
 .pytest_cache/
 *.so
 .DS_Store
+.vscode/
+eval_results.json
 example_documents/*.pdf
 example_documents/*.png
 example_documents/*.jpg
