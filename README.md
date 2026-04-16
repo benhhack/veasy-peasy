@@ -14,7 +14,7 @@ For someone like me (a South African living in the UK who travels a bunch) I spe
 - [ ] I never know which file is which. Get the LLM to save copies of the necessary files in a cmmon space, renamed properly.
 - [x] Make it installable as a standalone tool
 
-## Installation
+## Installation (note: not wired up yet so won't actually do anything)
 
 <p align="center">
   <img src="docs/vzpz-init.svg" alt="vzpz init" width="600">
