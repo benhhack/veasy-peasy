@@ -28,7 +28,7 @@ def scan(
         typer.echo(f"Error: {requirements} is not a file", err=True)
         raise typer.Exit(1)
 
-    classify, discover, ocr_image, try_passport, extract_pdf, load_requirements, build_summary, write_summary = _load_pipeline()
+    classify, discover, ocr_image, try_passport, extract_pdf, load_requirements, build_summary, assemble_output = _load_pipeline()
 
     started_at = datetime.now()
 
@@ -47,8 +47,8 @@ def scan(
 
     finished_at = datetime.now()
     summary = build_summary(folder, requirements_data, file_results, started_at, finished_at)
-    out_path = write_summary(folder, summary, output_name)
-    typer.echo(f"Summary written to {out_path}")
+    report_dir = assemble_output(folder, file_results, requirements_data, summary, started_at)
+    typer.echo(f"Report written to {report_dir}")
 
 
 def _load_pipeline():
@@ -59,9 +59,10 @@ def _load_pipeline():
     from veasy_peasy.extractors.passport import try_passport
     from veasy_peasy.extractors.pdf import extract_pdf
     from veasy_peasy.requirements import load_requirements
-    from veasy_peasy.summary import build_summary, write_summary
+    from veasy_peasy.output import assemble_output
+    from veasy_peasy.summary import build_summary
 
-    return classify, discover, ocr_image, try_passport, extract_pdf, load_requirements, build_summary, write_summary
+    return classify, discover, ocr_image, try_passport, extract_pdf, load_requirements, build_summary, assemble_output
 
 
 def _process_file(path, try_passport, extract_pdf, ocr_image, classify, log):
