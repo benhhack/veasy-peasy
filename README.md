@@ -7,12 +7,12 @@ A local-first CLI tool that scans a folder of visa application documents, extrac
 For someone like me (a South African living in the UK who travels a bunch) I spend way too much time looking for specific documents from different sources and manually cross-referencing them against a checklist. Since I do this a lot I already have all the documents, I jsut never remember where I put them. This tool automates that: point it at a folder of scans and a requirements file, and it tells you what's matched, what's missing, and resolves conflicts (e.g., two passports — which one is valid?).
 
 ## Next Steps
-- [] Wire it up end to end
-- [] Allow it to search through emails as well
-- [] Enhance local search by giving it multiple folders and nested directory tooling
-- [] Improve step 1: give the LLM a requirement sheet which it parses into the requirements.yaml
-- [] I never know which file is which. Get the LLM to save copies of the necessary files in a cmmon space, renamed properly.
-- [] Make it installable as a standalone tool
+- [ ] Wire it up end to end
+- [ ] Allow it to search through emails as well
+- [ ] Enhance local search by giving it multiple folders and nested directory tooling
+- [ ] Improve step 1: give the LLM a requirement sheet which it parses into the requirements.yaml
+- [ ] I never know which file is which. Get the LLM to save copies of the necessary files in a cmmon space, renamed properly.
+- [ ] Make it installable as a standalone tool
 
 ## Privacy
 Since these are sensitive documents, I wanted to keep everything completely local: no external API calls for LLMs. Goal is for it to fit quite comfortably in 8GB RAM and to cleanup totally and immediately upon completion.
