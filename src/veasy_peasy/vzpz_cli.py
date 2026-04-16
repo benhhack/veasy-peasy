@@ -12,12 +12,12 @@ app = typer.Typer(
 )
 
 LOGO_LINES = [
-    "██╗   ██╗ ████████╗ ██████╗  ████████╗",
-    "██║   ██║ ╚══███╔══╝ ██╔══██╗ ╚══███╔══╝",
-    "██║   ██║    ███╔╝   ██████╔╝    ███╔╝   ",
-    "╚██╗ ██╔╝   ███╔╝    ██╔═══╝    ███╔╝    ",
-    " ╚████╔╝   ████████╗ ██║       ████████╗ ",
-    "  ╚═══╝    ╚═══════╝ ╚═╝       ╚═══════╝ ",
+    "██╗   ██╗  █████████╗   ██████╗   █████████╗ ",
+    "██║   ██║  ╚══════██╔╝  ██╔══██╗  ╚══════██╔╝",
+    "██║   ██║     ████╔╝    ██████╔╝     ████╔╝  ",
+    "╚██╗ ██╔╝  ████╔╝       ██╔═══╝   ████╔╝     ",
+    " ╚████╔╝   █████████╗   ██║       █████████╗ ",
+    "  ╚═══╝    ╚════════╝   ╚═╝       ╚════════╝ ",
 ]
 
 GRADIENT = ["cyan", "bright_cyan", "bright_magenta", "magenta", "bright_magenta", "cyan"]
@@ -49,9 +49,13 @@ def init() -> None:
     console = Console()
     console.print()
 
+    logo_width = max(len(line.rstrip()) for line in LOGO_LINES)
+    pad = max(0, (console.width - logo_width) // 2)
+    prefix = " " * pad
+
     for line, colour in zip(LOGO_LINES, GRADIENT):
-        styled = Text(line, style=f"bold {colour}")
-        console.print(styled, justify="center")
+        styled = Text(prefix + line.rstrip(), style=f"bold {colour}")
+        console.print(styled)
 
     console.print()
     console.print(
