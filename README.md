@@ -12,6 +12,7 @@ For someone like me (a South African living in the UK who travels a bunch) I spe
 - [] Enhance local search by giving it multiple folders and nested directory tooling
 - [] Improve step 1: give the LLM a requirement sheet which it parses into the requirements.yaml
 - [] I never know which file is which. Get the LLM to save copies of the necessary files in a cmmon space, renamed properly.
+- [] Make it installable as a standalone tool
 
 ## Privacy
 Since these are sensitive documents, I wanted to keep everything completely local: no external API calls for LLMs. Goal is for it to fit quite comfortably in 8GB RAM and to cleanup totally and immediately upon completion.
