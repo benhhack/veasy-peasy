@@ -7,7 +7,7 @@ def discover(folder: Path, skip_filename: str = "summary.json") -> list[Path]:
     """Recursively find supported document files, skipping hidden files and output."""
     results = []
     for path in sorted(folder.rglob("*")):
-        if any(part.startswith(".") for part in path.parts):
+        if any(part.startswith(".") or part.startswith("VzPz_Report_") for part in path.parts):
             continue
         if path.name == skip_filename:
             continue
