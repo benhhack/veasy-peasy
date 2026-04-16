@@ -13,6 +13,7 @@ build/
 .DS_Store
 .vscode/
 eval_results.json
+spec.md
 example_documents/*.pdf
 example_documents/*.png
 example_documents/*.jpg
