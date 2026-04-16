@@ -12,7 +12,38 @@ For someone like me (a South African living in the UK who travels a bunch) I spe
 - [ ] Enhance local search by giving it multiple folders and nested directory tooling
 - [ ] Improve step 1: give the LLM a requirement sheet which it parses into the requirements.yaml
 - [ ] I never know which file is which. Get the LLM to save copies of the necessary files in a cmmon space, renamed properly.
-- [ ] Make it installable as a standalone tool
+- [x] Make it installable as a standalone tool
+
+## Installation
+
+<p align="center">
+  <img src="docs/vzpz-init.svg" alt="vzpz init" width="600">
+</p>
+
+### curl (macOS)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/benhhack/veasy-peasy/main/install.sh | bash
+```
+
+This downloads the latest release binary to `~/.local/bin/vzpz`. Make sure `~/.local/bin` is on your `PATH`.
+
+### Manual download
+
+Grab the binary for your architecture from the [latest release](https://github.com/benhhack/veasy-peasy/releases/latest), make it executable, and put it somewhere on your `PATH`:
+
+```bash
+chmod +x vzpz-aarch64-darwin
+mv vzpz-aarch64-darwin /usr/local/bin/vzpz
+```
+
+### Usage
+
+```bash
+vzpz --version
+vzpz --help
+vzpz init        # initialise a new workspace
+```
 
 ## Privacy
 Since these are sensitive documents, I wanted to keep everything completely local: no external API calls for LLMs. Goal is for it to fit quite comfortably in 8GB RAM and to cleanup totally and immediately upon completion.
