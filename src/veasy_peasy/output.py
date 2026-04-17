@@ -71,31 +71,38 @@ def _build_markdown(
     """Build a human-readable markdown report."""
     lines = ["# VzPz Report", ""]
 
-    lines.append("## Documents Searched")
-    for r in file_results:
-        lines.append(f"- **{Path(r['path']).name}** — {r['classification']}")
-    lines.append("")
-
-    lines.append("## Documents Found")
+    # Build classification -> copied files mapping
+    cls_to_copies: dict[str, list[dict]] = {}
     for c in copied_files:
-        lines.append(f"- **{c['new_name']}** (was {c['original']})")
-    lines.append("")
+        cls_to_copies.setdefault(c["classification"], []).append(c)
 
-    unknowns = [r for r in file_results if r["classification"] == "unknown"]
-    lines.append("## Unknown Documents")
-    if unknowns:
-        for r in unknowns:
-            lines.append(f"- {Path(r['path']).name}")
-    else:
-        lines.append("- None")
+    # Requirements table
+    lines.append("## Requirements")
     lines.append("")
-
-    found_cls = {r["classification"] for r in file_results if r["classification"] != "unknown"}
-    lines.append("## Requirements Status")
+    lines.append("| Requirement | Status | Original File | Report File |")
+    lines.append("|---|---|---|---|")
     for doc in requirements_data.get("documents", []):
         name = doc["name"]
-        status = "satisfied" if name in found_cls else "missing"
-        lines.append(f"- **{name}**: {status}")
+        matches = cls_to_copies.get(name, [])
+        if matches:
+            for m in matches:
+                lines.append(f"| {name} | satisfied | {m['original']} | {m['new_name']} |")
+        else:
+            lines.append(f"| {name} | missing | — | — |")
+    lines.append("")
+
+    # Unmatched documents: files not copied into the report folder
+    copied_originals = {c["original"] for c in copied_files}
+    unmatched = [r for r in file_results if Path(r["path"]).name not in copied_originals]
+    lines.append("## Unmatched Documents")
+    lines.append("")
+    if unmatched:
+        lines.append("| File | Classification |")
+        lines.append("|---|---|")
+        for r in unmatched:
+            lines.append(f"| {Path(r['path']).name} | {r['classification']} |")
+    else:
+        lines.append("None")
     lines.append("")
 
     return "\n".join(lines)
