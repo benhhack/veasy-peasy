@@ -22,6 +22,8 @@ def build_summary(
             "wall_time_s": match_result.get("wall_time_s", 0),
             "result": match_result.get("result"),
         }
+    # Orchestrator traces live as standalone files in the report dir — drop them here.
+    slim_files = [{k: v for k, v in r.items() if k != "trace"} for r in file_results]
     return {
         "tool": "veasy-peasy",
         "version": __version__,
@@ -33,7 +35,7 @@ def build_summary(
         },
         "requirements_loaded": requirements_data,
         "matching": matching,
-        "files": file_results,
+        "files": slim_files,
     }
 
 

@@ -30,12 +30,22 @@ If a classification looks wrong, flag it in your output.
 Respond with ONLY a JSON object, no markdown fences, no explanation. Use this exact schema:
 {{
   "matched": [
-    {{"requirement": "<requirement name>", "file": "<file path>", "reason": "<why this file satisfies the requirement>"}}
+    {{"requirement": "<requirement name>", "file": "<file path>", "reason": "<one sentence explaining why this file satisfies the requirement>"}}
   ],
   "missing": ["<requirement name that has no matching document>"],
-  "conflicts_resolved": ["<description of conflict and which document was chosen and why>"],
-  "validation_warnings": ["<any classification that looks wrong, or empty list if all look correct>"]
+  "conflicts_resolved": ["<one sentence: which requirement had a conflict, which file was chosen, and why>"],
+  "validation_warnings": ["<one sentence: which file looks misclassified and why; empty list if all look correct>"]
 }}
+
+Rules:
+- Every entry in `matched` MUST include a non-empty `reason` string (one concise sentence).
+- `conflicts_resolved` and `validation_warnings` MUST be arrays of plain strings, NOT objects.
+
+Example of a well-formed matched entry:
+{{"requirement": "bank_statement", "file": "/tmp/amex_aug.pdf", "reason": "Amex statement covering Aug 2025 with account number and closing balance."}}
+
+Example of a well-formed conflict entry:
+"bank_statement: two statements found; chose /tmp/amex_aug.pdf because it is the most recent (Aug 2025)."
 
 JSON output:"""
 
@@ -89,6 +99,12 @@ def parse_response(raw: str) -> dict | None:
     # validation_warnings is optional — default to empty list
     if "validation_warnings" not in data:
         data["validation_warnings"] = []
+
+    # Ensure every matched entry has a `reason` key so the renderer can fall back gracefully.
+    if isinstance(data.get("matched"), list):
+        for entry in data["matched"]:
+            if isinstance(entry, dict) and "reason" not in entry:
+                entry["reason"] = ""
 
     return data
 

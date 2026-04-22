@@ -5,10 +5,12 @@ Otherwise runs the full pipeline against the committed example_documents/
 fixtures and verifies the matcher output lands in summary.json.
 """
 import json
+import re
 import shutil
 from pathlib import Path
 
 import pytest
+import yaml
 from typer.testing import CliRunner
 
 from veasy_peasy.cli import app
@@ -36,7 +38,7 @@ def test_scan_end_to_end(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(
         app,
-        ["scan", str(scan_dir), "--requirements", str(REQUIREMENTS)],
+        [str(scan_dir), "--requirements", str(REQUIREMENTS)],
     )
     assert result.exit_code == 0, result.output
 
@@ -53,3 +55,27 @@ def test_scan_end_to_end(tmp_path: Path) -> None:
 
     report_md = (report_dirs[0] / "report.md").read_text()
     assert "## Matching (LLM)" in report_md
+
+    # Report renders readable prose for conflicts/warnings — no raw Python dict reprs leaking through.
+    assert "{'" not in report_md, "report.md contains raw dict repr"
+    assert "'requirement':" not in report_md
+
+    # Requirements table has exactly one row per declared requirement (no duplicates).
+    req_doc = yaml.safe_load(REQUIREMENTS.read_text())
+    req_names = [d["name"] for d in req_doc["documents"]]
+    req_section = report_md.split("## Requirements", 1)[1].split("##", 1)[0]
+    for name in req_names:
+        rows = re.findall(rf"^\| {re.escape(name)} \|", req_section, re.MULTILINE)
+        assert len(rows) == 1, f"requirement '{name}' should have exactly one row, got {len(rows)}"
+
+    # File copies should be named after requirements (e.g. passport.pdf, bank_statement.pdf)
+    # — not after classifier buckets like employment_letter_1.pdf when the LLM matched differently.
+    copied_stems = {p.stem.split("_exp_")[0].rsplit("_", 1)[0] if "_exp_" in p.stem
+                    else (p.stem.rsplit("_", 1)[0] if p.stem.rsplit("_", 1)[-1].isdigit() else p.stem)
+                    for p in report_dirs[0].iterdir()
+                    if p.is_file() and p.suffix.lower() != ".md" and p.name != "summary.json"}
+    copied_stems.discard("summary")
+    # Every copy's base name should correspond to one of the declared requirements.
+    assert copied_stems.issubset(set(req_names)), (
+        f"copied files {copied_stems} not all named after requirements {req_names}"
+    )

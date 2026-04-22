@@ -14,8 +14,6 @@ build/
 .vscode/
 eval_results.json
 spec.md
-example_documents/*.pdf
-example_documents/*.png
-example_documents/*.jpg
-example_documents/*.jpeg
-example_documents/summary.json
+example_documents/*
+!example_documents/*.md
+!example_documents/.gitkeep
