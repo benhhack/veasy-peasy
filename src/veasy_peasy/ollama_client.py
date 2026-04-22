@@ -54,6 +54,17 @@ def is_available() -> bool:
         return False
 
 
+def list_models() -> list[str]:
+    """Return the names of models currently pulled by the local Ollama server."""
+    try:
+        req = request.Request(f"{OLLAMA_BASE}/api/tags")
+        with request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+    except Exception:
+        return []
+    return [m.get("name", "") for m in data.get("models", []) if m.get("name")]
+
+
 def pull_model(model: str) -> None:
     """Pull a model if not already present. Blocks until complete."""
     logger.info("Pulling model %s (if not cached)...", model)

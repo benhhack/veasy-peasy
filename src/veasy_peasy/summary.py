@@ -11,8 +11,17 @@ def build_summary(
     file_results: list[dict],
     started_at: datetime,
     finished_at: datetime,
+    match_result: dict | None = None,
 ) -> dict:
     """Build the summary dict. Separate from write so Day 2 can reuse."""
+    matching = None
+    if match_result is not None:
+        matching = {
+            "model": match_result.get("model"),
+            "parse_ok": match_result.get("parse_ok", False),
+            "wall_time_s": match_result.get("wall_time_s", 0),
+            "result": match_result.get("result"),
+        }
     return {
         "tool": "veasy-peasy",
         "version": __version__,
@@ -23,7 +32,7 @@ def build_summary(
             "file_count": len(file_results),
         },
         "requirements_loaded": requirements_data,
-        "matching": None,
+        "matching": matching,
         "files": file_results,
     }
 

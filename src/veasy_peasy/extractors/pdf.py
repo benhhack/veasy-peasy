@@ -20,11 +20,13 @@ def extract_pdf(path: Path) -> str:
         from veasy_peasy.extractors.ocr import ocr_image
 
         ocr_parts = []
-        for page in doc:
-            pix = page.get_pixmap()
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                pix.save(tmp.name)
-                ocr_parts.append(ocr_image(Path(tmp.name)))
+        with tempfile.TemporaryDirectory(prefix="vzpz_pdf_") as tmpdir:
+            tmp_root = Path(tmpdir)
+            for i, page in enumerate(doc):
+                pix = page.get_pixmap()
+                png_path = tmp_root / f"page_{i}.png"
+                pix.save(str(png_path))
+                ocr_parts.append(ocr_image(png_path))
         text = "\n".join(ocr_parts).strip()
 
     doc.close()

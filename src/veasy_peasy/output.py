@@ -22,7 +22,7 @@ def assemble_output(
 
     write_summary(report_dir, summary_data)
 
-    md = _build_markdown(requirements_data, file_results, copied_files)
+    md = _build_markdown(requirements_data, file_results, copied_files, summary_data.get("matching"))
     (report_dir / "report.md").write_text(md)
 
     return report_dir
@@ -66,7 +66,10 @@ def _copy_classified_files(report_dir: Path, file_results: list[dict]) -> list[d
 
 
 def _build_markdown(
-    requirements_data: dict, file_results: list[dict], copied_files: list[dict]
+    requirements_data: dict,
+    file_results: list[dict],
+    copied_files: list[dict],
+    matching: dict | None = None,
 ) -> str:
     """Build a human-readable markdown report."""
     lines = ["# VzPz Report", ""]
@@ -91,6 +94,9 @@ def _build_markdown(
             lines.append(f"| {name} | missing | — | — |")
     lines.append("")
 
+    # LLM matching (matched / missing / conflicts / warnings)
+    lines.extend(_build_matching_section(matching))
+
     # Unmatched documents: files not copied into the report folder
     copied_originals = {c["original"] for c in copied_files}
     unmatched = [r for r in file_results if Path(r["path"]).name not in copied_originals]
@@ -106,3 +112,66 @@ def _build_markdown(
     lines.append("")
 
     return "\n".join(lines)
+
+
+def _build_matching_section(matching: dict | None) -> list[str]:
+    """Render the LLM matching output as markdown. Empty list if matching is absent/failed."""
+    if not matching:
+        return []
+    lines = ["## Matching (LLM)", ""]
+    if not matching.get("parse_ok") or not matching.get("result"):
+        model = matching.get("model", "?")
+        lines.append(f"_Matcher ({model}) did not return parseable JSON._")
+        lines.append("")
+        return lines
+
+    result = matching["result"]
+    model = matching.get("model", "?")
+    lines.append(f"_Model: {model}_")
+    lines.append("")
+
+    matched = result.get("matched", [])
+    lines.append(f"### Matched ({len(matched)})")
+    lines.append("")
+    if matched:
+        lines.append("| Requirement | File | Reason |")
+        lines.append("|---|---|---|")
+        for m in matched:
+            file_name = Path(m.get("file", "")).name or "—"
+            reason = (m.get("reason") or "").replace("|", "\\|")
+            lines.append(f"| {m.get('requirement', '—')} | {file_name} | {reason} |")
+    else:
+        lines.append("None")
+    lines.append("")
+
+    missing = result.get("missing", [])
+    lines.append(f"### Missing ({len(missing)})")
+    lines.append("")
+    if missing:
+        for m in missing:
+            lines.append(f"- {m}")
+    else:
+        lines.append("None")
+    lines.append("")
+
+    conflicts = result.get("conflicts_resolved", [])
+    lines.append(f"### Conflicts Resolved ({len(conflicts)})")
+    lines.append("")
+    if conflicts:
+        for c in conflicts:
+            lines.append(f"- {c}")
+    else:
+        lines.append("None")
+    lines.append("")
+
+    warnings = result.get("validation_warnings", [])
+    lines.append(f"### Validation Warnings ({len(warnings)})")
+    lines.append("")
+    if warnings:
+        for w in warnings:
+            lines.append(f"- {w}")
+    else:
+        lines.append("None")
+    lines.append("")
+
+    return lines

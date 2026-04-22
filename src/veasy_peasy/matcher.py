@@ -109,6 +109,7 @@ def match(model: str, requirements_data: dict, file_results: list[dict]) -> dict
     parsed = parse_response(raw)
 
     return {
+        "model": model,
         "result": parsed,
         "raw_response": raw,
         "parse_ok": parsed is not None,

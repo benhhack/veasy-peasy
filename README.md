@@ -4,14 +4,14 @@ A local-first CLI tool that scans a folder of visa application documents, extrac
 
 ## Why This Exists
 
-For someone like me (a South African living in the UK who travels a bunch) I spend way too much time looking for specific documents from different sources and manually cross-referencing them against a checklist. Since I do this a lot I already have all the documents, I jsut never remember where I put them. This tool automates that: point it at a folder of scans and a requirements file, and it tells you what's matched, what's missing, and resolves conflicts (e.g., two passports — which one is valid?).
+For someone like me (a South African living in the UK who travels a bunch) I spend way too much time looking for specific documents from different sources and manually cross-referencing them against a checklist. Since I do this a lot I already have all the documents, I just never remember where I put them. This tool automates that: point it at a folder of scans and a requirements file, and it tells you what's matched, what's missing, and resolves conflicts (e.g., two passports — which one is valid?).
 
 ## Next Steps
 - [ ] Wire it up end to end
 - [ ] Allow it to search through emails as well
 - [ ] Enhance local search by giving it multiple folders and nested directory tooling
 - [ ] Improve step 1: give the LLM a requirement sheet which it parses into the requirements.yaml
-- [ ] I never know which file is which. Get the LLM to save copies of the necessary files in a cmmon space, renamed properly.
+- [ ] I never know which file is which. Get the LLM to save copies of the necessary files in a common space, renamed properly.
 - [x] Make it installable as a standalone tool
 
 ## Installation (note: not wired up yet so won't actually do anything)
@@ -153,7 +153,7 @@ Its main weakness is validation — it doesn't flag misclassified documents. Sin
 ```bash
 uv sync
 ollama pull qwen2.5:3b
-uv run veasy-peasy scan ./my_documents --requirements example_requirements/visa_uk.yaml
+uv run veasy-peasy ./example_documents --requirements example_requirements/visa_schengen.yaml
 ```
 
 ## Running the Model Evaluation

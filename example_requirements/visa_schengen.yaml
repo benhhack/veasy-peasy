@@ -1,4 +1,4 @@
-visa_type: "Shengen Visitor Visa"
+visa_type: "Schengen Visitor Visa"
 documents:
   - name: "passport"
     required: true
