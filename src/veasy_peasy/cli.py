@@ -37,7 +37,10 @@ def scan(
 
     _preflight_ollama(model)
 
-    classify_document, discover, load_requirements, build_summary, assemble_output, match = _load_pipeline()
+    classify_document, discover, load_requirements, build_summary, assemble_output, match, OllamaLLM, ManualEngine = _load_pipeline()
+
+    llm = OllamaLLM(model)
+    engine = ManualEngine()
 
     started_at = datetime.now()
 
@@ -50,7 +53,7 @@ def scan(
     file_results = []
     for i, path in enumerate(files, 1):
         typer.echo(f"  [{i}/{len(files)}] {path.name}...", nl=False)
-        result = classify_document(path, requirements_data, model)
+        result = classify_document(path, requirements_data, llm=llm, engine=engine)
         if result["error"]:
             short = result["error"].splitlines()[0].strip()
             typer.echo(f" error: {short[:80]}")
@@ -60,7 +63,7 @@ def scan(
         file_results.append(result)
 
     typer.echo(f"Matching against {len(requirements_data['documents'])} requirement(s) with {model}...")
-    match_result = match(model, requirements_data, file_results)
+    match_result = match(requirements_data, file_results, llm)
     if not match_result["parse_ok"]:
         log.warning("LLM response could not be parsed as JSON — matching section will be empty")
 
@@ -78,8 +81,10 @@ def _load_pipeline():
     from veasy_peasy.summary import build_summary
     from veasy_peasy.matcher import match
     from veasy_peasy.orchestrator import classify_document
+    from veasy_peasy.llm import OllamaLLM
+    from veasy_peasy.engine import ManualEngine
 
-    return classify_document, discover, load_requirements, build_summary, assemble_output, match
+    return classify_document, discover, load_requirements, build_summary, assemble_output, match, OllamaLLM, ManualEngine
 
 
 def _preflight_ollama(model: str) -> None:
