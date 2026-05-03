@@ -20,7 +20,8 @@ import time
 
 import pytest
 
-from veasy_peasy.matcher import match, parse_response, build_prompt
+from veasy_peasy.llm import OllamaLLM
+from veasy_peasy.matcher import match, build_prompt
 from veasy_peasy.ollama_client import (
     is_available,
     load_model,
@@ -196,6 +197,8 @@ def run_eval() -> list[dict]:
             })
             continue
 
+        llm = OllamaLLM(model)
+
         model_result = {
             "model": model,
             "load_time_s": load_time,
@@ -219,7 +222,7 @@ def run_eval() -> list[dict]:
             for run_idx in range(RUNS_PER_SCENARIO):
                 if RUNS_PER_SCENARIO > 1:
                     logger.info("    Run %d/%d", run_idx + 1, RUNS_PER_SCENARIO)
-                match_result = match(model, scenario["requirements"], scenario["files"])
+                match_result = match(scenario["requirements"], scenario["files"], llm)
                 scores = score_scenario(match_result["result"], scenario["ground_truth"])
                 run_results.append({
                     "parse_ok": match_result["parse_ok"],
