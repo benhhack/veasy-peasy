@@ -4,10 +4,12 @@ SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
 
 
 def discover(folder: Path, skip_filename: str = "summary.json") -> list[Path]:
-    """Recursively find supported document files, skipping hidden files and output."""
+    """Recursively find supported document files, skipping hidden files and prior report dirs."""
     results = []
     for path in sorted(folder.rglob("*")):
         if any(part.startswith(".") for part in path.parts):
+            continue
+        if any(part.startswith("VzPz_Report_") for part in path.parts):
             continue
         if path.name == skip_filename:
             continue

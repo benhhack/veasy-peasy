@@ -3,7 +3,8 @@
 import json
 import logging
 
-from veasy_peasy.ollama_client import generate
+from veasy_peasy.llm import LLM
+from veasy_peasy.llm_json import parse_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +31,22 @@ If a classification looks wrong, flag it in your output.
 Respond with ONLY a JSON object, no markdown fences, no explanation. Use this exact schema:
 {{
   "matched": [
-    {{"requirement": "<requirement name>", "file": "<file path>", "reason": "<why this file satisfies the requirement>"}}
+    {{"requirement": "<requirement name>", "file": "<file path>", "reason": "<one sentence explaining why this file satisfies the requirement>"}}
   ],
   "missing": ["<requirement name that has no matching document>"],
-  "conflicts_resolved": ["<description of conflict and which document was chosen and why>"],
-  "validation_warnings": ["<any classification that looks wrong, or empty list if all look correct>"]
+  "conflicts_resolved": ["<one sentence: which requirement had a conflict, which file was chosen, and why>"],
+  "validation_warnings": ["<one sentence: which file looks misclassified and why; empty list if all look correct>"]
 }}
+
+Rules:
+- Every entry in `matched` MUST include a non-empty `reason` string (one concise sentence).
+- `conflicts_resolved` and `validation_warnings` MUST be arrays of plain strings, NOT objects.
+
+Example of a well-formed matched entry:
+{{"requirement": "bank_statement", "file": "/tmp/amex_aug.pdf", "reason": "Amex statement covering Aug 2025 with account number and closing balance."}}
+
+Example of a well-formed conflict entry:
+"bank_statement: two statements found; chose /tmp/amex_aug.pdf because it is the most recent (Aug 2025)."
 
 JSON output:"""
 
@@ -63,53 +74,37 @@ def build_prompt(requirements_data: dict, file_results: list[dict]) -> str:
     )
 
 
-def parse_response(raw: str) -> dict | None:
-    """Try to parse the LLM response as the expected JSON schema.
-
-    Returns the parsed dict, or None if parsing fails.
-    """
-    text = raw.strip()
-    # Strip markdown fences if the model added them
-    if text.startswith("```"):
-        lines = text.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        text = "\n".join(lines).strip()
-
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
+def _parse_match_response(raw: str) -> dict | None:
+    """Parse the matcher LLM response. Returns None if JSON parsing fails or
+    required keys are missing. Defaults validation_warnings + matched[].reason
+    on success."""
+    data = parse_llm_json(raw, required_keys=("matched", "missing", "conflicts_resolved"))
+    if data is None:
         return None
 
-    # Validate expected keys exist
-    if not isinstance(data, dict):
-        return None
-    for key in ("matched", "missing", "conflicts_resolved"):
-        if key not in data:
-            return None
-    # validation_warnings is optional — default to empty list
-    if "validation_warnings" not in data:
-        data["validation_warnings"] = []
+    # Default validation_warnings to [] (LLM may omit it)
+    data.setdefault("validation_warnings", [])
+
+    # Ensure every matched entry has a reason key (renderer falls back gracefully)
+    if isinstance(data.get("matched"), list):
+        for entry in data["matched"]:
+            if isinstance(entry, dict) and "reason" not in entry:
+                entry["reason"] = ""
 
     return data
 
 
-def match(model: str, requirements_data: dict, file_results: list[dict]) -> dict:
-    """Run the full match pipeline: build prompt, call LLM, parse response.
-
-    Returns a dict with keys:
-        result: parsed matching dict or None
-        raw_response: the raw LLM text
-        parse_ok: whether JSON parsing succeeded
-        wall_time_s: generation wall time
-        eval_count: tokens generated (if available)
+def match(requirements_data: dict, file_results: list[dict], llm: LLM) -> dict:
+    """Run the LLM-based matcher: build prompt, call llm.generate, parse JSON.
+    Returns the same dict shape as today (model, result, raw_response, parse_ok, wall_time_s, eval_count, prompt_eval_count).
     """
     prompt = build_prompt(requirements_data, file_results)
-    gen = generate(model, prompt, temperature=0.0)
+    gen = llm.generate(prompt, temperature=0.0)
     raw = gen.get("response", "")
-    parsed = parse_response(raw)
+    parsed = _parse_match_response(raw)
 
     return {
-        "model": model,
+        "model": llm.model_name,
         "result": parsed,
         "raw_response": raw,
         "parse_ok": parsed is not None,

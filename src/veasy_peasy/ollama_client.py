@@ -107,6 +107,34 @@ def generate(model: str, prompt: str, temperature: float = 0.0) -> dict:
     return result
 
 
+def chat_with_tools(
+    model: str,
+    messages: list[dict],
+    tools: list[dict],
+    temperature: float = 0.0,
+) -> dict:
+    """Call /api/chat with tool definitions. Returns the assistant message + timing.
+
+    Response dict keys:
+        message: {"role": "assistant", "content": str, "tool_calls": [{...}]?}
+        wall_time_s, eval_count, prompt_eval_count
+    """
+    start = time.time()
+    result = _post_no_stream(
+        "/api/chat",
+        {
+            "model": model,
+            "messages": messages,
+            "tools": tools,
+            "stream": False,
+            "options": {"temperature": temperature},
+        },
+        timeout=300,
+    )
+    result["wall_time_s"] = time.time() - start
+    return result
+
+
 def unload_model(model: str) -> None:
     """Unload a model from memory by setting keep_alive to 0."""
     logger.info("Unloading model %s...", model)

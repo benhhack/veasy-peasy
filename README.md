@@ -50,7 +50,7 @@ Since these are sensitive documents, I wanted to keep everything completely loca
 
 ## Architecture
 
-The pipeline deliberately uses the **right tool for each job** rather than throwing an LLM at everything:
+Specialised modules do the work; a local LLM decides which to call. Deterministic rules short-circuit obvious cases so small models aren't trusted with problems they'd mishandle.
 
 ```
 Input: folder/ + requirements.yaml
@@ -61,14 +61,20 @@ Input: folder/ + requirements.yaml
 └─────────────────────────┘
          │
          ▼
-┌─────────────────────────┐
-│  Specialized Extractors │  passporteye (MRZ) + EasyOCR (general)
-└─────────────────────────┘
-         │
-         ▼
-┌─────────────────────────┐
-│  Keyword Classifier     │  Rule-based doc type detection
-└─────────────────────────┘
+┌───────────────────────────────────────────────┐
+│  Per-Document Orchestrator                    │
+│                                               │
+│   1. Deterministic fast path                  │
+│      passporteye MRZ  →  passport (skip LLM)  │
+│                                               │
+│   2. LLM tool-calling loop (Ollama)           │
+│      Tools: extract_pdf_text, ocr_image,      │
+│             keyword_score, check_mrz          │
+│      Up to 5 tool rounds per document.        │
+│      Classifies into a requirement category   │
+│      declared in requirements.yaml (or        │
+│      "unknown").                              │
+└───────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────┐
@@ -76,15 +82,23 @@ Input: folder/ + requirements.yaml
 └─────────────────────────┘
          │
          ▼
-Output: report.json + summary.md
+Output: VzPz_Report_<ts>/
+          ├── <requirement>.pdf         # renamed copies of matched files
+          ├── summary.json              # full machine-readable run
+          ├── report.md                 # human-readable summary
+          └── traces/<file>.trace.json  # every tool call and LLM message per document
 ```
 
-| Stage | Tool | Why not an LLM? |
-|-------|------|-----------------|
-| Passport parsing | `passporteye` (MRZ reader) | MRZ is a standardized machine-readable format — deterministic parsing beats probabilistic generation |
-| Text extraction | `EasyOCR` with MPS acceleration | OCR is a solved problem with mature models; LLM adds latency and cost for no accuracy gain |
-| Doc classification | Keyword rules | Simple heuristics (e.g., "sort code" → bank statement) are fast, interpretable, and > 95% accurate for this domain |
-| Requirement matching | Local LLM via Ollama | This is where reasoning is actually needed: fuzzy matching, conflict resolution, validation of classifications |
+| Stage | Tool | Rationale |
+|-------|------|-----------|
+| Passport parsing | `passporteye` (MRZ reader) | MRZ is a standardised machine-readable format — deterministic parsing beats probabilistic generation. A valid MRZ short-circuits the LLM. |
+| Text extraction | `PyMuPDF` + `EasyOCR` (MPS accelerated) | OCR is a solved problem; the LLM never sees raw bytes, only extractor output. |
+| Doc classification | Hybrid orchestrator: deterministic rules + LLM tool-calling | The old keyword classifier only recognised 4 document types and couldn't adapt when new requirements were added. The LLM now orchestrates the specialised extractors and classifies against whatever categories the requirements YAML declares. Deterministic rules keep unambiguous cases (valid passport MRZ) out of the LLM entirely. |
+| Requirement matching | Local LLM via Ollama | Fuzzy matching, conflict resolution, validation of classifications. |
+
+### Debugging: per-document traces
+
+Every classification decision is recorded as `traces/<file>.trace.json` inside the report folder. Each trace captures the decision path (`deterministic_mrz` or `llm_orchestrator`), every tool call with arguments and elapsed time, the LLM's message content between tool calls, and the final parsed classification. When a document misclassifies, the trace shows exactly which tool was called, what it returned, and what the LLM concluded — making prompt and model failures debuggable instead of opaque.
 
 ## Model Evaluation
 
@@ -138,7 +152,9 @@ Choosing the right small language model for the matching step is critical — it
 - Second-fastest inference (32.7 tok/s)
 - Reliable JSON output (100% parse rate)
 
-Its main weakness is validation — it doesn't flag misclassified documents. Since the keyword classifier handles classification well for this domain, this is an acceptable trade-off. For applications where upstream classification is less reliable, gemma3:4b would be the better choice despite being slower.
+Its main weakness is validation — it doesn't flag misclassified documents. The orchestrator is now the first line of defence on classification quality, so a weaker validation pass on the matcher is an acceptable trade-off. For applications where upstream classification is less reliable, gemma3:4b would be the better choice despite being slower.
+
+> Note: the eval harness currently benchmarks the **matcher** (LLM reasoning over already-classified files). A separate evaluation of the new per-document orchestrator is the natural next step.
 
 ## Prerequisites
 
@@ -179,5 +195,5 @@ Results are saved to `tests/eval_results.json` and `eval_report.md`.
 | Passport OCR | `passporteye` |
 | General OCR | `easyocr` (MPS accelerated) |
 | PDF handling | `pymupdf` |
-| Doc classification | Keyword rules |
-| Local LLM | Ollama + qwen2.5:3b |
+| Doc classification | Hybrid orchestrator (deterministic MRZ + LLM tool-calling) |
+| Local LLM | Ollama + qwen2.5:3b (tool-calling via `/api/chat`) |
