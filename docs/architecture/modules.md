@@ -75,6 +75,7 @@ EngineState = TypedDict("EngineState", {
 - Honours `max_rounds`; hitting it sets `stop_reason="max_rounds"` and returns last-known state.
 - Appends to `tool_timings` / `llm_timings` exactly once per call. Wrapping is provided by `ToolRegistry.dispatch` and `LLM.chat` — engines must not re-time.
 - Mutates **only** the state it owns. Doesn't reach into `artifacts` directly — `ToolRegistry.dispatch` writes there for known artifact-producing tools (see Tool registry below).
+- Sets transient `state["_current_round"]: int` before each `ToolRegistry.dispatch` call so `tool_timings` entries carry the right round index. Pops the key on every exit path. Any new Engine Adapter (e.g. LangGraph) must do the same — this is part of the seam.
 
 ### Contract test
 
@@ -176,14 +177,14 @@ def from_state(
 ### Invariants
 
 - Output JSON schema unchanged from today (`{file, final_classification, decision_path, model, wall_time_s, steps[]}`). `output.py` and `summary.py` consume the same shape; no changes there.
-- `decision_path = "deterministic_mrz"` iff `fast_path_step.decision == "passport"`, else `"llm_orchestrator"`.
+- `decision_path` is `"deterministic_mrz"` iff `fast_path_step.decision == "passport"`. Otherwise `"llm_orchestrator"` — including when `fast_path_step` is `None` AND when fast path was tried but missed.
 - Pure: no I/O, no clock reads.
 
 ---
 
 ## Orchestrator — `src/veasy_peasy/orchestrator.py` (slimmed)
 
-Per-Document coordinator. Was 276 lines of mixed loop + trace mutation; becomes ~80 lines of glue.
+Per-Document coordinator. Was 276 lines of mixed loop + trace mutation; becomes ~180 lines (the bulk now is the system prompt string in `_build_initial_messages`; the coordination logic itself is ~80 lines).
 
 ### Interface
 
