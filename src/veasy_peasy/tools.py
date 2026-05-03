@@ -1,8 +1,8 @@
 """Tool implementations exposed to the LLM orchestrator.
 
 Each tool is a plain Python function that takes JSON-serialisable args and
-returns a JSON-serialisable result. `TOOL_SCHEMAS` mirrors the Ollama
-tool-calling format (`/api/chat` with `tools=[...]`).
+returns a JSON-serialisable result. TOOL_REGISTRY holds all tools; its
+.schemas() method returns the Ollama tool-calling format.
 """
 
 import json
@@ -229,10 +229,3 @@ TOOL_REGISTRY = ToolRegistry([
     ),
 ])
 
-
-# ---------------------------------------------------------------------------
-# Backward-compat shims — orchestrator still imports these today (Task 6 removes them)
-# ---------------------------------------------------------------------------
-
-TOOL_SCHEMAS: list[dict] = TOOL_REGISTRY.schemas()
-TOOL_DISPATCH: dict[str, Callable] = {tool.name: tool.fn for tool in TOOL_REGISTRY._tools}

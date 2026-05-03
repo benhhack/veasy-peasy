@@ -50,7 +50,9 @@ def test_ollama_llm_generate_default_temperature():
 
 def test_ollama_llm_satisfies_protocol():
     """OllamaLLM is structurally compatible with the LLM Protocol."""
-    assert isinstance(OllamaLLM("any-model"), LLM)
+    instance = OllamaLLM("any-model")
+    assert isinstance(instance, LLM)
+    assert isinstance(instance.model_name, str)
 
 
 # ---------------------------------------------------------------------------
@@ -127,4 +129,6 @@ def test_scripted_llm_rejects_malformed_generate_response():
 
 def test_scripted_llm_satisfies_protocol():
     """ScriptedLLM is structurally compatible with the LLM Protocol."""
-    assert isinstance(ScriptedLLM(), LLM)
+    instance = ScriptedLLM()
+    assert isinstance(instance, LLM)
+    assert isinstance(instance.model_name, str)

@@ -6,8 +6,6 @@ from veasy_peasy.tools import (
     Tool,
     ToolRegistry,
     TOOL_REGISTRY,
-    TOOL_SCHEMAS,
-    TOOL_DISPATCH,
 )
 
 
@@ -100,11 +98,6 @@ def test_schemas_type_is_function():
         assert "name" in s["function"]
         assert "description" in s["function"]
         assert "parameters" in s["function"]
-
-
-def test_schemas_matches_tool_schemas_shim():
-    # The shim must be structurally identical to a fresh call.
-    assert TOOL_SCHEMAS == TOOL_REGISTRY.schemas()
 
 
 # ---------------------------------------------------------------------------
@@ -312,34 +305,3 @@ def test_dispatch_initialises_empty_state():
     assert "tool_timings" in state
     assert "artifacts" in state
 
-
-# ---------------------------------------------------------------------------
-# 14. Backward-compat: TOOL_SCHEMAS
-# ---------------------------------------------------------------------------
-
-def test_tool_schemas_exists_and_has_4_entries():
-    assert isinstance(TOOL_SCHEMAS, list)
-    assert len(TOOL_SCHEMAS) == 4
-
-
-def test_tool_schemas_names():
-    names = {s["function"]["name"] for s in TOOL_SCHEMAS}
-    assert names == {"extract_pdf_text", "ocr_image", "keyword_score", "check_mrz"}
-
-
-# ---------------------------------------------------------------------------
-# 15. Backward-compat: TOOL_DISPATCH
-# ---------------------------------------------------------------------------
-
-def test_tool_dispatch_exists_and_has_4_keys():
-    assert isinstance(TOOL_DISPATCH, dict)
-    assert len(TOOL_DISPATCH) == 4
-
-
-def test_tool_dispatch_keys():
-    assert set(TOOL_DISPATCH.keys()) == {"extract_pdf_text", "ocr_image", "keyword_score", "check_mrz"}
-
-
-def test_tool_dispatch_values_are_callable():
-    for name, fn in TOOL_DISPATCH.items():
-        assert callable(fn), f"TOOL_DISPATCH[{name!r}] is not callable"

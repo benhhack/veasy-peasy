@@ -22,6 +22,8 @@ class GenerateResponse(TypedDict):
 
 @runtime_checkable
 class LLM(Protocol):
+    model_name: str
+
     def chat(self, messages: list[dict], tools: list[dict]) -> ChatResponse:
         """Call the model with tool definitions.
 
@@ -37,11 +39,11 @@ class LLM(Protocol):
 
 class OllamaLLM:
     def __init__(self, model: str) -> None:
-        self._model = model
+        self.model_name = model
 
     def chat(self, messages: list[dict], tools: list[dict]) -> ChatResponse:
         # Tool-call chat is always deterministic (temperature=0.0); sampling lives on generate.
-        return ollama_client.chat_with_tools(self._model, messages, tools, temperature=0.0)
+        return ollama_client.chat_with_tools(self.model_name, messages, tools, temperature=0.0)
 
     def generate(self, prompt: str, temperature: float = 0.0) -> GenerateResponse:
-        return ollama_client.generate(self._model, prompt, temperature=temperature)
+        return ollama_client.generate(self.model_name, prompt, temperature=temperature)

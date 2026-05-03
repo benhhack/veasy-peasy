@@ -19,6 +19,7 @@ class ScriptedLLM:
         self,
         chat_responses: list[ChatResponse] | None = None,
         generate_responses: list[GenerateResponse] | None = None,
+        model_name: str = "scripted",
     ) -> None:
         chat_responses = list(chat_responses or [])
         generate_responses = list(generate_responses or [])
@@ -36,6 +37,7 @@ class ScriptedLLM:
                 f"generate_responses[{i}] must be a dict with 'response' (str) and "
                 f"'wall_time_s' (float); got {r!r}"
             )
+        self.model_name = model_name
         self._chat = chat_responses
         self._generate = generate_responses
         self._chat_idx = 0

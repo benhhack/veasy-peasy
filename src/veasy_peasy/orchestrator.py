@@ -1,40 +1,40 @@
 """Per-document classifier orchestrator.
 
-Hybrid design:
-  1. Deterministic fast path — a valid passport MRZ short-circuits the LLM.
-  2. LLM tool-call loop — for everything else. The LLM (via Ollama tool-calling)
-     picks which extractor to run, observes the result, and emits a final
-     classification drawn from the loaded requirement names.
-
-Every decision is recorded in `trace.steps` so failures are debuggable.
+Thin coordinator: runs the deterministic Fast Path, hands off to the Engine's
+LLM tool-call loop, then derives a Trace from the final EngineState.
 """
 
-import json
-import logging
 import time
 from pathlib import Path
-from typing import Callable
 
+from veasy_peasy.engine import Engine, EngineState, ManualEngine
 from veasy_peasy.extractors.passport import try_passport
-from veasy_peasy.ollama_client import chat_with_tools
-from veasy_peasy.tools import TOOL_DISPATCH, TOOL_SCHEMAS
+from veasy_peasy.llm import LLM
+from veasy_peasy.llm_json import parse_llm_json
+from veasy_peasy.tools import TOOL_REGISTRY
+from veasy_peasy.tracer import FastPathStep, from_state as build_trace
 
-logger = logging.getLogger(__name__)
-
-MAX_TOOL_ROUNDS = 5
-TEXT_EXCERPT_LEN = 500
-
-# Tools that produce text — used to cache a text excerpt on the result.
-_TEXT_TOOLS = {"extract_pdf_text", "ocr_image"}
+DEFAULT_MAX_ROUNDS = 5
 
 
 def classify_document(
     path: Path,
     requirements_data: dict,
-    model: str,
-    chat_fn: Callable[..., dict] = chat_with_tools,
+    llm: LLM,
+    engine: Engine | None = None,
+    max_rounds: int = DEFAULT_MAX_ROUNDS,
 ) -> dict:
-    """Classify a single document. Returns the full file-result dict (incl. trace)."""
+    """Classify one document.
+
+    Runs the deterministic Fast Path first. If it doesn't hit, hands off
+    to the Engine's LLM tool-call loop, then derives a Trace from the
+    final EngineState. Returns the full file-result dict (incl. trace).
+    """
+    if engine is None:
+        engine = ManualEngine()
+
+    started = time.time()
+
     result = {
         "path": str(path.resolve()),
         "ext": path.suffix.lower(),
@@ -43,136 +43,98 @@ def classify_document(
         "text_excerpt": "",
         "text_length": 0,
         "error": None,
-        "trace": {
-            "file": str(path.resolve()),
-            "final_classification": "unknown",
-            "decision_path": "llm_orchestrator",
-            "model": model,
-            "wall_time_s": 0.0,
-            "steps": [],
-        },
+        "trace": None,
     }
-    trace = result["trace"]
-    started = time.time()
 
-    try:
-        # 1. Deterministic fast path: valid passport MRZ → passport.
-        t0 = time.time()
-        mrz = try_passport(path)
-        trace["steps"].append({
-            "step": len(trace["steps"]) + 1,
-            "kind": "tool_call",
-            "tool": "try_passport",
-            "result": mrz,
-            "elapsed_s": round(time.time() - t0, 3),
-        })
-        if mrz and str(mrz.get("mrz_type", "")).startswith("P"):
-            result["classification"] = "passport"
-            result["extracted_fields"] = mrz
-            trace["final_classification"] = "passport"
-            trace["decision_path"] = "deterministic_mrz"
-            trace["steps"].append({
-                "step": len(trace["steps"]) + 1,
-                "kind": "decision",
-                "rule": "mrz_type_starts_with_P",
-                "outcome": "passport",
-            })
-            return _finalise(result, started)
+    # 1. Fast Path
+    fast_path_step = _run_fast_path(path)
 
-        # 2. LLM loop — classify into one of the declared requirement names.
-        valid_categories = [d["name"] for d in requirements_data.get("documents", [])]
-        messages = _build_initial_messages(path, requirements_data, valid_categories)
+    if fast_path_step.decision == "passport":
+        result["classification"] = "passport"
+        result["extracted_fields"] = fast_path_step.result or {}
+        result["text_excerpt"] = ""
+        result["text_length"] = 0
+        result["error"] = None
+        empty_state: EngineState = {
+            "messages": [],
+            "tool_timings": [],
+            "llm_timings": [],
+            "artifacts": {},
+        }
+        result["trace"] = build_trace(
+            final_state=empty_state,
+            fast_path_step=fast_path_step,
+            model=llm.model_name,
+            file_path=path,
+            wall_time_s=time.time() - started,
+        )
+        return result
 
-        for round_idx in range(MAX_TOOL_ROUNDS):
-            resp = chat_fn(model, messages, TOOL_SCHEMAS)
-            msg = resp.get("message", {}) or {}
-            content = msg.get("content", "") or ""
-            tool_calls = msg.get("tool_calls") or []
+    # 2. Engine loop
+    valid_categories = [d["name"] for d in requirements_data.get("documents", [])]
+    initial_messages = _build_initial_messages(path, requirements_data, valid_categories, max_rounds)
 
-            trace["steps"].append({
-                "step": len(trace["steps"]) + 1,
-                "kind": "llm_message",
-                "content": content[:500],
-                "tool_calls": [
-                    {"name": tc.get("function", {}).get("name"),
-                     "args": tc.get("function", {}).get("arguments")}
-                    for tc in tool_calls
-                ],
-                "wall_time_s": round(resp.get("wall_time_s", 0.0), 3),
-            })
+    state: EngineState = {
+        "messages": initial_messages,
+        "tool_timings": [],
+        "llm_timings": [],
+        "artifacts": {},
+    }
 
-            # No tool calls → LLM is trying to finalise. Parse classification from `content`.
-            if not tool_calls:
-                final = _parse_final(content, valid_categories)
-                trace["steps"].append({
-                    "step": len(trace["steps"]) + 1,
-                    "kind": "llm_final",
-                    "classification": final["classification"],
-                    "reason": final["reason"],
-                })
-                result["classification"] = final["classification"]
-                trace["final_classification"] = final["classification"]
-                return _finalise(result, started)
+    final_state = engine.run(state, TOOL_REGISTRY, llm, max_rounds)
 
-            # Otherwise, execute each tool call and feed results back.
-            messages.append({"role": "assistant", "content": content, "tool_calls": tool_calls})
-            for tc in tool_calls:
-                fn = tc.get("function", {}) or {}
-                name = fn.get("name", "")
-                raw_args = fn.get("arguments", {}) or {}
-                args = _coerce_args(raw_args)
-                t0 = time.time()
-                tool_result = _dispatch_tool(name, args)
-                elapsed = round(time.time() - t0, 3)
+    # 3. Pull artifacts off final state
+    artifacts = final_state.get("artifacts", {})
+    result["extracted_fields"] = artifacts.get("extracted_fields", {}) or {}
+    result["text_excerpt"] = artifacts.get("text_excerpt", "")
+    result["text_length"] = artifacts.get("text_length", 0)
 
-                trace["steps"].append({
-                    "step": len(trace["steps"]) + 1,
-                    "kind": "tool_result",
-                    "tool": name,
-                    "args": args,
-                    "result_excerpt": _excerpt_result(tool_result),
-                    "elapsed_s": elapsed,
-                })
+    # 4. Parse final classification
+    final_classification = "unknown"
+    final_reason = ""
+    if final_state.get("stop_reason") == "final" and final_state.get("messages"):
+        last = final_state["messages"][-1]
+        parsed = parse_llm_json(last.get("content", ""))
+        if parsed is None:
+            final_reason = "LLM final response was not valid JSON"
+        else:
+            cls = parsed.get("classification", "unknown")
+            if cls in valid_categories or cls == "unknown":
+                final_classification = cls
+                final_reason = parsed.get("reason", "") or ""
+            else:
+                final_reason = f"LLM returned unknown category: {cls!r}"
 
-                # Cache text excerpt + fields on the result for downstream matcher.
-                if name in _TEXT_TOOLS and isinstance(tool_result, dict) and tool_result.get("text"):
-                    if not result["text_excerpt"]:
-                        result["text_excerpt"] = tool_result["text"][:TEXT_EXCERPT_LEN]
-                        result["text_length"] = tool_result.get("text_length", len(tool_result["text"]))
-                if name == "check_mrz" and isinstance(tool_result, dict) and tool_result.get("mrz"):
-                    result["extracted_fields"] = tool_result["mrz"]
+    if final_state.get("stop_reason") == "error":
+        result["error"] = final_state.get("error")
 
-                messages.append({
-                    "role": "tool",
-                    "content": json.dumps(tool_result, default=str)[:4000],
-                })
-
-        # Ran out of rounds without a final answer.
-        trace["steps"].append({
-            "step": len(trace["steps"]) + 1,
-            "kind": "decision",
-            "rule": "max_rounds_exceeded",
-            "outcome": "unknown",
-        })
-        return _finalise(result, started)
-
-    except Exception as e:
-        result["error"] = str(e)
-        trace["steps"].append({
-            "step": len(trace["steps"]) + 1,
-            "kind": "error",
-            "message": str(e),
-        })
-        logger.exception("orchestrator failed for %s", path)
-        return _finalise(result, started)
-
-
-def _finalise(result: dict, started_at: float) -> dict:
-    result["trace"]["wall_time_s"] = round(time.time() - started_at, 3)
+    result["classification"] = final_classification
+    result["trace"] = build_trace(
+        final_state=final_state,
+        fast_path_step=fast_path_step,
+        model=llm.model_name,
+        file_path=path,
+        wall_time_s=time.time() - started,
+        final_classification=final_classification,
+        final_reason=final_reason,
+    )
     return result
 
 
-def _build_initial_messages(path: Path, requirements_data: dict, valid_categories: list[str]) -> list[dict]:
+def _run_fast_path(path: Path) -> FastPathStep:
+    t0 = time.time()
+    mrz = try_passport(path)
+    elapsed = round(time.time() - t0, 3)
+    decision = "passport" if mrz and str(mrz.get("mrz_type", "")).startswith("P") else None
+    return FastPathStep(tool="try_passport", result=mrz, elapsed_s=elapsed, decision=decision)
+
+
+def _build_initial_messages(
+    path: Path,
+    requirements_data: dict,
+    valid_categories: list[str],
+    max_rounds: int,
+) -> list[dict]:
     req_lines = [
         f'- "{d["name"]}": {d.get("description", "")}'
         for d in requirements_data.get("documents", [])
@@ -201,7 +163,7 @@ def _build_initial_messages(path: Path, requirements_data: dict, valid_categorie
         "judge from the actual text content.\n"
         "  4. Only return 'unknown' if the text content genuinely does not match any requirement.\n"
         "\n"
-        f"You have at most {MAX_TOOL_ROUNDS} tool calls. When finished, respond with ONLY a JSON object "
+        f"You have at most {max_rounds} tool calls. When finished, respond with ONLY a JSON object "
         f"on its own, no markdown fences:\n"
         f"{{\"classification\": <one of: {category_list}>, \"reason\": \"<one sentence\"}}"
     )
@@ -213,64 +175,3 @@ def _build_initial_messages(path: Path, requirements_data: dict, valid_categorie
         {"role": "system", "content": system},
         {"role": "user", "content": user},
     ]
-
-
-def _coerce_args(raw) -> dict:
-    """Ollama returns tool args as a dict, but some models send a JSON string."""
-    if isinstance(raw, dict):
-        return raw
-    if isinstance(raw, str):
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            return {}
-    return {}
-
-
-def _dispatch_tool(name: str, args: dict) -> dict:
-    fn = TOOL_DISPATCH.get(name)
-    if fn is None:
-        return {"error": f"unknown tool: {name}"}
-    try:
-        return fn(**args)
-    except TypeError as e:
-        return {"error": f"bad args for {name}: {e}"}
-    except Exception as e:
-        return {"error": f"{name} raised: {e}"}
-
-
-def _excerpt_result(result) -> str:
-    """Compact representation of a tool result for the trace."""
-    if isinstance(result, dict):
-        if "text" in result:
-            return (result["text"] or "")[:300]
-        return json.dumps(result, default=str)[:300]
-    return str(result)[:300]
-
-
-def _parse_final(content: str, valid_categories: list[str]) -> dict:
-    """Extract {classification, reason} from the LLM's final message. Fall back to 'unknown'."""
-    text = (content or "").strip()
-    # Strip code fences if present.
-    if text.startswith("```"):
-        lines = [l for l in text.split("\n") if not l.strip().startswith("```")]
-        text = "\n".join(lines).strip()
-
-    # Try to locate a JSON object anywhere in the content.
-    candidate = text
-    if not text.startswith("{"):
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            candidate = text[start:end + 1]
-
-    try:
-        data = json.loads(candidate)
-    except (json.JSONDecodeError, ValueError):
-        return {"classification": "unknown", "reason": "LLM final response was not valid JSON"}
-
-    cls = data.get("classification", "unknown")
-    if cls not in valid_categories and cls != "unknown":
-        return {"classification": "unknown", "reason": f"LLM returned unknown category: {cls!r}"}
-    reason = data.get("reason", "") or ""
-    return {"classification": cls, "reason": reason}
